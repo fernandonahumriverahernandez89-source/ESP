@@ -1,5 +1,6 @@
--- =================================================================
--- BLADE BALL SCRIPT (OPTIMIZADO PARA DELTA EXECUTOR)
+        -- =================================================================
+-- BLADE BALL - SCRIPT MEJORADO
+-- Auto Parry + Auto Spam + Ball ESP + UI
 -- =================================================================
 
 local Players = game:GetService("Players")
@@ -11,65 +12,92 @@ local CoreGui = game:GetService("CoreGui")
 local LocalPlayer = Players.LocalPlayer
 local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 
--- Actualizar referencia del personaje al respawnear
 LocalPlayer.CharacterAdded:Connect(function(newChar)
     Character = newChar
 end)
 
--- Variables de Control
+-- Configuración
 local Config = {
     AutoParry = false,
     AutoSpam = false,
     BallESP = false,
-    ParryDistance = 15, -- Distancia de detección para Auto Parry
-    SpamDelay = 0.05    -- Intervalo de tiempo para Auto Spam
+    ParryDistance = 15,
+    SpamDelay = 0.05,
+    BallColor = Color3.fromRGB(255, 0, 0)
 }
 
--- Referencia al Remoto de Parry
-local ParryRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("ParryButtonPress")
-
--- Obtener el contenedor seguro para la UI/ESP
+-- Contenedor seguro
 local getHui = gethui or function() return CoreGui end
 
 -- =================================================================
--- FUNCIONES AUXILIARES
+-- BUSCAR REMOTO DE PARRY (flexible)
 -- =================================================================
+local ParryRemote = nil
 
--- Función para enviar la señal de Parry de forma segura
-local function triggerParry()
-    pcall(function()
-        ParryRemote:FireServer()
-    end)
+local function findParryRemote()
+    -- Buscar en todos lados
+    local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+    if remotes then
+        for _, r in ipairs(remotes:GetDescendants()) do
+            if r:IsA("RemoteEvent") and string.find(string.lower(r.Name), "parry") then
+                ParryRemote = r
+                return r
+            end
+        end
+    end
+    -- Buscar en todo ReplicatedStorage
+    for _, r in ipairs(ReplicatedStorage:GetDescendants()) do
+        if r:IsA("RemoteEvent") and string.find(string.lower(r.Name), "parry") then
+            ParryRemote = r
+            return r
+        end
+    end
+    return nil
 end
 
--- Función para verificar y obtener la bola real del juego
-local function getRealBall()
-    local ballsFolder = Workspace:FindFirstChild("Balls")
-    if not ballsFolder then return nil end
+findParryRemote()
 
-    for _, ball in ipairs(ballsFolder:GetChildren()) do
-        if ball:GetAttribute("realBall") == true then
-            return ball
+-- =================================================================
+-- BUSCAR LA BOLA REAL (flexible)
+-- =================================================================
+local function getRealBall()
+    -- Buscar en workspace y sus hijos
+    for _, obj in ipairs(Workspace:GetDescendants()) do
+        if obj:IsA("BasePart") and obj:GetAttribute("realBall") == true then
+            return obj
         end
     end
     return nil
 end
 
 -- =================================================================
--- 1. SISTEMA AUTO PARRY
+-- TRIGGER PARRY
+-- =================================================================
+local function triggerParry()
+    if not ParryRemote then
+        findParryRemote()
+        if not ParryRemote then return end
+    end
+    pcall(function()
+        ParryRemote:FireServer()
+    end)
+end
+
+-- =================================================================
+-- AUTO PARRY
 -- =================================================================
 task.spawn(function()
     RunService.PreRender:Connect(function()
         if not Config.AutoParry then return end
-
         pcall(function()
             local ball = getRealBall()
-            if not ball or not Character or not Character:FindFirstChild("HumanoidRootPart") then return end
-
-            local hrp = Character.HumanoidRootPart
+            if not ball then return end
+            local char = LocalPlayer.Character
+            if not char then return end
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            if not hrp then return end
+            
             local distance = (ball.Position - hrp.Position).Magnitude
-
-            -- Detectar si la bola está en dirección al jugador y a la distancia configurada
             if distance <= Config.ParryDistance then
                 triggerParry()
             end
@@ -78,7 +106,7 @@ task.spawn(function()
 end)
 
 -- =================================================================
--- 2. SISTEMA AUTO SPAM
+-- AUTO SPAM
 -- =================================================================
 task.spawn(function()
     while true do
@@ -90,32 +118,26 @@ task.spawn(function()
 end)
 
 -- =================================================================
--- 3. SISTEMA ESP PARA LA BOLA
+-- ESP DEL BALÓN
 -- =================================================================
 local ballHighlight = nil
 
 local function updateHighlight()
     pcall(function()
         local ball = getRealBall()
-
         if Config.BallESP and ball then
             if not ballHighlight or ballHighlight.Parent ~= getHui() then
                 if ballHighlight then ballHighlight:Destroy() end
-                
                 ballHighlight = Instance.new("Highlight")
-                ballHighlight.Name = "BladeBallESP"
-                ballHighlight.FillColor = Color3.fromRGB(255, 0, 0)
+                ballHighlight.FillColor = Config.BallColor
                 ballHighlight.OutlineColor = Color3.fromRGB(255, 255, 255)
                 ballHighlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
                 ballHighlight.Parent = getHui()
             end
-            
             ballHighlight.Adornee = ball
             ballHighlight.Enabled = true
         else
-            if ballHighlight then
-                ballHighlight.Enabled = false
-            end
+            if ballHighlight then ballHighlight.Enabled = false end
         end
     end)
 end
@@ -123,12 +145,12 @@ end
 task.spawn(function()
     while true do
         updateHighlight()
-        task.wait(0.5)
+        task.wait(0.3)
     end
 end)
 
 -- =================================================================
--- 4. INTERFAZ GRÁFICA (RAYFIELD UI CON FALLBACK)
+-- UI (RAYFIELD)
 -- =================================================================
 local uiLoaded, Rayfield = pcall(function()
     return loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
@@ -137,9 +159,9 @@ end)
 if uiLoaded and Rayfield then
     pcall(function()
         local Window = Rayfield:CreateWindow({
-            Name = "Blade Ball - Delta Script",
-            LoadingTitle = "Cargando Script...",
-            LoadingSubtitle = "Por Delta Executor",
+            Name = "Blade Ball - Mi Script",
+            LoadingTitle = "Cargando...",
+            LoadingSubtitle = "Auto Parry + ESP",
             ConfigurationSaving = { Enabled = false }
         })
 
@@ -171,10 +193,21 @@ if uiLoaded and Rayfield then
                 Config.BallESP = Value
             end,
         })
+
+        MainTab:CreateSlider({
+            Name = "Distancia de Parry",
+            Range = [0, 50],
+            Increment = 1,
+            Suffix = " studs",
+            CurrentValue = 15,
+            Flag = "DistanceSlider",
+            Callback = function(Value)
+                Config.ParryDistance = Value
+            end,
+        })
     end)
 else
-    -- Fallback: Si la UI no carga por red o compatibilidad, activa Auto Parry y ESP por defecto
-    warn("Rayfield UI no se pudo cargar. Activando Auto Parry y ESP en modo seguro...")
+    warn("Rayfield UI no cargó. Modo seguro activado.")
     Config.AutoParry = true
     Config.BallESP = true
 end
